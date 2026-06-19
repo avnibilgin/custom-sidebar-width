@@ -1,0 +1,33 @@
+/* Custom Sidebar Width — settings tab layout */
+
+.csw-info {
+  opacity: 0.7;
+  font-size: var(--font-ui-smaller);
+}
+
+/* A rule row: hide the (empty) info column and let the controls fill the row */
+.csw-rule-row .setting-item-info {
+  display: none;
+}
+
+.csw-rule-row .setting-item-control {
+  flex-grow: 1;
+  width: 100%;
+}
+
+/* Property / tag text inputs grow to share the available space */
+.csw-rule-row .csw-grow {
+  flex-grow: 1;
+  min-width: 0;
+}
+
+/* Narrow numeric inputs for the pixel widths */
+.csw-rule-row .csw-num {
+  width: 64px;
+  flex-shrink: 0;
+}
+
+/* The star button when this rule is the default */
+.csw-default-active {
+  color: var(--text-accent);
+}
