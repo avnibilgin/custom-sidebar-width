@@ -6,21 +6,31 @@ explorer or a roomy right sidebar while others should stay compact.
 
 ## How it works
 
-You define a list of **rules** in the plugin settings. Each rule has:
+You define **rules** in the plugin settings. Each rule has:
 
-- a **property** name and/or a **tag**,
-- a **left** width in pixels (optional),
-- a **right** width in pixels (optional).
+- a **property** name and/or a **tag** — the trigger that makes the rule match,
+- a **left** and/or **right** width in pixels — leave a side empty to not touch
+  it.
 
-When you open a note, the plugin looks at the note's frontmatter and tags and
-applies the **first matching rule**. A rule matches when the note has the named
-frontmatter property (any value, even empty) *or* the given tag. An empty width
-field means "leave that side unchanged".
+When you open a note, the plugin checks it against your rules **from top to
+bottom** and applies the **first one that matches**.
+
+### What makes a rule match?
+
+A rule matches a note when **either** is true:
+
+- the note's frontmatter **contains the property key**, or
+- the note **carries the tag**.
+
+> [!IMPORTANT]
+> For a property, only the **key has to exist** — its **value is irrelevant**.
+> `home_sidebars:` (empty), `home_sidebars: false` or `home_sidebars: anything`
+> all match equally. You do **not** need to set it to `true`.
 
 ### Example
 
-Add a rule with property `home_sidebars`, left `400`, and right empty. Then in a
-note's frontmatter just add the key — **no value is needed**:
+In the plugin settings, add a rule: property `home_sidebars`, left `400`, right
+empty. Then add that key to any note's frontmatter — no value needed:
 
 ```markdown
 ---
@@ -28,13 +38,11 @@ home_sidebars:
 ---
 ```
 
-Opening that note widens the left sidebar to 400 px. The property matches purely
-by the **presence** of the key: `home_sidebars:` (empty), `home_sidebars: false`
-or any value all trigger the rule. Notes without the property keep whatever width
-they had.
+Opening that note widens the left sidebar to 400 px. Notes without the key keep
+whatever width they had.
 
-You can also match on tags, e.g. a rule with tag `#wide` applies to every note
-carrying that tag.
+Prefer tags? Use a rule with a **tag** instead — e.g. `#wide` applies to every
+note carrying that tag.
 
 ## Behavior when no rule matches
 
