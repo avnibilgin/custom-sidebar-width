@@ -24,7 +24,7 @@ A rule matches a note when **either** is true:
 
 > [!IMPORTANT]
 > For a property, only the **key has to exist** — its **value is irrelevant**.
-> `home_sidebars:` (empty), `home_sidebars: false` or `home_sidebars: anything`
+> `home_sidebars: (empty)`, `home_sidebars: false` or `home_sidebars: anything`
 > all match equally. You do **not** need to set it to `true`.
 
 ### Example
