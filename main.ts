@@ -5,11 +5,13 @@ import {
   TFile,
   App,
   getAllTags,
+  debounce,
   CachedMetadata,
 } from "obsidian";
 
 type Side = "left" | "right";
 type Lang = "en" | "de";
+type WhenAbsent = "leave" | "default" | "previous";
 
 interface Strings {
   rulesHeading: string;
@@ -23,51 +25,75 @@ interface Strings {
   removeRule: string;
   addRule: string;
   behaviorHeading: string;
-  resetName: string;
-  resetDesc: string;
+  whenAbsentName: string;
+  whenAbsentDesc: string;
+  optLeave: string;
+  optDefault: string;
+  optPrevious: string;
 }
 
 const STRINGS: Record<Lang, Strings> = {
   en: {
     rulesHeading: "Sidebar rules",
     info:
-      "If the note has the property or the tag, the widths set here are " +
-      "applied (empty field = don't set that side). The first matching rule " +
-      "wins. The star marks the default rule used for resetting (see Behavior).",
+      "A rule applies as soon as the open note has the given property or tag. " +
+      "For the property it is enough that the key exists in the frontmatter — " +
+      "the value does not matter (`home_sidebars:` empty, `home_sidebars: " +
+      "false` or any value all match). If several rules match, the topmost one " +
+      "wins. An empty width field (L/R) leaves that side unchanged. The star " +
+      "only matters for the “Reset to default width” option below — it sets " +
+      "which rule's width is used as the fallback there, nothing else.",
     phProperty: "Property",
     phTag: "#tag",
     phLeft: "L px",
     phRight: "R px",
-    starOn: "Default (click to clear)",
-    starOff: "Set as default",
+    starOn: "Fallback width for “Reset to default width” (click to clear)",
+    starOff: "Use this rule's width as the fallback for “Reset to default width”",
     removeRule: "Remove rule",
     addRule: "Add rule",
     behaviorHeading: "Behavior",
-    resetName: "Reset to default when no rule matches",
-    resetDesc:
-      "Off: width stays unchanged when no rule matches. On: sets the width " +
-      "of the rule marked with the star.",
+    whenAbsentName: "When no rule matches",
+    whenAbsentDesc:
+      "What happens to the sidebar width on notes that match no rule. " +
+      "“Restore previous width” (default) remembers the width from before a " +
+      "rule and puts it back when you leave a matched note. “Reset to default " +
+      "width” uses the width you starred above. “Leave width unchanged” does " +
+      "nothing.",
+    optLeave: "Leave width unchanged",
+    optDefault: "Reset to default width (star)",
+    optPrevious: "Restore previous width",
   },
   de: {
     rulesHeading: "Seitenleisten-Regeln",
     info:
-      "Trägt die Notiz die Eigenschaft oder den Tag, werden die hier " +
-      "hinterlegten Breiten angewendet (leeres Feld = diese Seite nicht " +
-      "setzen). Die erste passende Regel gewinnt. Der Stern markiert die " +
-      "Standardregel für das Zurücksetzen (siehe Verhalten).",
+      "Eine Regel greift, sobald die geöffnete Notiz die eingetragene " +
+      "Eigenschaft oder den Tag hat. Bei der Eigenschaft genügt, dass der " +
+      "Schlüssel im Frontmatter steht — der Wert spielt keine Rolle " +
+      "(`home_sidebars:` leer, `home_sidebars: false` oder ein beliebiger " +
+      "Wert greifen alle gleich). Passen mehrere Regeln, gewinnt die oberste. " +
+      "Ein leeres Breitenfeld (L/R) lässt diese Seite unverändert. Der Stern " +
+      "ist nur für die Option „Auf Standardbreite zurücksetzen“ weiter unten " +
+      "wichtig — er legt fest, welche Regel-Breite dort als Rückfall dient, " +
+      "sonst nichts.",
     phProperty: "Eigenschaft",
     phTag: "#Tag",
     phLeft: "L px",
     phRight: "R px",
-    starOn: "Standard (klicken zum Aufheben)",
-    starOff: "Als Standard markieren",
+    starOn: "Rückfall-Breite für „Auf Standardbreite zurücksetzen“ (klicken zum Aufheben)",
+    starOff: "Diese Regel als Rückfall-Breite für „Auf Standardbreite zurücksetzen“ festlegen",
     removeRule: "Regel entfernen",
     addRule: "Regel hinzufügen",
     behaviorHeading: "Verhalten",
-    resetName: "Ohne Treffer auf Standard zurücksetzen",
-    resetDesc:
-      "Aus: Breite bleibt unverändert, wenn keine Regel greift. " +
-      "An: setzt auf die Breite der mit Stern markierten Regel.",
+    whenAbsentName: "Wenn keine Regel passt",
+    whenAbsentDesc:
+      "Was mit der Seitenleisten-Breite geschieht, wenn die Notiz keine Regel " +
+      "trifft. „Vorherige Breite wiederherstellen“ (Standard) merkt sich die " +
+      "Breite von vor der Regel und stellt sie beim Verlassen einer Regel-" +
+      "Notiz wieder her. „Auf Standardbreite zurücksetzen“ nutzt die oben mit " +
+      "dem Stern markierte Breite. „Breite unverändert lassen“ tut nichts.",
+    optLeave: "Breite unverändert lassen",
+    optDefault: "Auf Standardbreite zurücksetzen (Stern)",
+    optPrevious: "Vorherige Breite wiederherstellen",
   },
 };
 
@@ -88,15 +114,15 @@ interface Rule {
 
 interface CustomSidebarSettings {
   rules: Rule[];
-  resetWhenAbsent: boolean;
+  whenAbsent: WhenAbsent;
 }
 
 function defaults(): CustomSidebarSettings {
   return {
     rules: [
-      { property: "nav-width", tag: "", left: 250, right: null, isDefault: false },
+      { property: "home_sidebars", tag: "", left: 250, right: null, isDefault: false },
     ],
-    resetWhenAbsent: false,
+    whenAbsent: "previous",
   };
 }
 
@@ -112,15 +138,27 @@ function normalizeTag(tag: string): string {
 export default class CustomSidebarWidth extends Plugin {
   settings!: CustomSidebarSettings;
 
+  // Runtime state for "restore previous width": the width captured right before a
+  // rule first overrode a side, and whether a rule is currently applied there.
+  private prev: Record<Side, number | null> = { left: null, right: null };
+  private active: Record<Side, boolean> = { left: false, right: false };
+
+  // Debounced apply: let Obsidian finish the leaf/layout switch first, so we read
+  // the settled active note and don't fight the navigation (fixes the snap-back).
+  private apply = debounce(() => this.applyWidths(), 50, true);
+
   async onload() {
     await this.loadSettings();
 
+    // Use "file-open" (fires only when a note actually opens) rather than
+    // "active-leaf-change" (also fires on sidebar clicks). Reacting to the latter
+    // resized the sidebar mid-click in the file explorer and broke navigation.
     this.registerEvent(
-      this.app.workspace.on("active-leaf-change", () => this.applyWidths())
+      this.app.workspace.on("file-open", () => this.apply())
     );
     this.registerEvent(
       this.app.metadataCache.on("changed", (file) => {
-        if (file === this.app.workspace.getActiveFile()) this.applyWidths();
+        if (file === this.app.workspace.getActiveFile()) this.apply();
       })
     );
 
@@ -137,8 +175,8 @@ export default class CustomSidebarWidth extends Plugin {
       cache ? (getAllTags(cache) ?? []).map(normalizeTag) : []
     );
 
-    this.applySide("left", this.matchedWidth("left", fm, tagSet));
-    this.applySide("right", this.matchedWidth("right", fm, tagSet));
+    this.handleSide("left", this.matchedWidth("left", fm, tagSet));
+    this.handleSide("right", this.matchedWidth("right", fm, tagSet));
   }
 
   private matches(
@@ -146,6 +184,8 @@ export default class CustomSidebarWidth extends Plugin {
     fm: Record<string, unknown> | undefined,
     tagSet: Set<string>
   ): boolean {
+    // Property match is presence-based: the key just has to exist in the
+    // frontmatter — its value is irrelevant (empty, false or anything matches).
     const prop = r.property.trim();
     if (prop && fm && prop in fm) return true;
     const t = normalizeTag(r.tag);
@@ -176,12 +216,57 @@ export default class CustomSidebarWidth extends Plugin {
     return null;
   }
 
-  private applySide(side: Side, width: number | null) {
-    if (width === null && this.settings.resetWhenAbsent) {
-      width = this.starWidth(side);
+  private handleSide(side: Side, matched: number | null) {
+    if (matched !== null) {
+      // A rule applies on this side.
+      if (!this.active[side]) {
+        // Entering a rule from a non-rule state → remember the current width.
+        this.prev[side] = this.currentWidth(side);
+        this.active[side] = true;
+      }
+      this.setSidebarWidth(side, matched);
+      return;
     }
-    if (width === null) return;
-    this.setSidebarWidth(side, width);
+
+    // No rule on this side.
+    if (this.active[side]) {
+      // We just left a matched note → act per the "when no rule matches" mode.
+      this.active[side] = false;
+      const mode = this.settings.whenAbsent;
+      if (mode === "previous") {
+        if (this.prev[side] !== null) this.setSidebarWidth(side, this.prev[side]!);
+      } else if (mode === "default") {
+        const w = this.starWidth(side);
+        if (w !== null) this.setSidebarWidth(side, w);
+      }
+      this.prev[side] = null;
+      return;
+    }
+
+    // Still on non-rule notes: only "default" keeps snapping to the star width.
+    if (this.settings.whenAbsent === "default") {
+      const w = this.starWidth(side);
+      if (w !== null) this.setSidebarWidth(side, w);
+    }
+  }
+
+  // Current pixel width of a sidebar dock; null if collapsed or unreadable, so we
+  // never remember a bogus (≈0) width to restore later.
+  private currentWidth(side: Side): number | null {
+    const split = (
+      side === "left"
+        ? this.app.workspace.leftSplit
+        : this.app.workspace.rightSplit
+    ) as unknown as { collapsed?: boolean };
+    if (split?.collapsed) return null;
+    const selector =
+      side === "left"
+        ? ".workspace-split.mod-left-split"
+        : ".workspace-split.mod-right-split";
+    const el = activeDocument.querySelector<HTMLElement>(selector);
+    if (!el) return null;
+    const w = Math.round(el.getBoundingClientRect().width);
+    return w > 20 ? w : null;
   }
 
   private setSidebarWidth(side: Side, width: number) {
@@ -220,11 +305,8 @@ export default class CustomSidebarWidth extends Plugin {
         isDefault: r.isDefault === true,
       });
 
-    let reset = data.resetWhenAbsent === true;
-
     if (Array.isArray(data.rules)) {
       for (const r of data.rules as Array<Record<string, unknown>>) pushRule(r);
-      if (out.some((r) => r.isDefault)) reset = true;
     } else {
       const left = data.left as Record<string, unknown> | undefined;
       const right = data.right as Record<string, unknown> | undefined;
@@ -253,9 +335,22 @@ export default class CustomSidebarWidth extends Plugin {
       else r.isDefault = false;
     }
 
+    // "When no rule matches" mode. New default is "previous"; migrate the old
+    // resetWhenAbsent boolean (true → "default").
+    let whenAbsent: WhenAbsent;
+    if (
+      data.whenAbsent === "leave" ||
+      data.whenAbsent === "default" ||
+      data.whenAbsent === "previous"
+    ) {
+      whenAbsent = data.whenAbsent;
+    } else {
+      whenAbsent = data.resetWhenAbsent === true ? "default" : "previous";
+    }
+
     this.settings = {
       rules: out.length ? out : defaults().rules,
-      resetWhenAbsent: reset,
+      whenAbsent,
     };
   }
 
@@ -376,13 +471,16 @@ class CustomSidebarSettingTab extends PluginSettingTab {
 
     new Setting(containerEl).setName(s.behaviorHeading).setHeading();
     new Setting(containerEl)
-      .setName(s.resetName)
-      .setDesc(s.resetDesc)
-      .addToggle((t) =>
-        t
-          .setValue(this.plugin.settings.resetWhenAbsent)
+      .setName(s.whenAbsentName)
+      .setDesc(s.whenAbsentDesc)
+      .addDropdown((d) =>
+        d
+          .addOption("previous", s.optPrevious)
+          .addOption("default", s.optDefault)
+          .addOption("leave", s.optLeave)
+          .setValue(this.plugin.settings.whenAbsent)
           .onChange(async (v) => {
-            this.plugin.settings.resetWhenAbsent = v;
+            this.plugin.settings.whenAbsent = v as WhenAbsent;
             await this.save();
           })
       );

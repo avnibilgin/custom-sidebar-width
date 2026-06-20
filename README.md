@@ -14,32 +14,39 @@ You define a list of **rules** in the plugin settings. Each rule has:
 
 When you open a note, the plugin looks at the note's frontmatter and tags and
 applies the **first matching rule**. A rule matches when the note has the named
-frontmatter property *or* the given tag. An empty width field means "leave that
-side unchanged".
+frontmatter property (any value, even empty) *or* the given tag. An empty width
+field means "leave that side unchanged".
 
 ### Example
 
-Add a rule with property `nav-width`, left `400`, and right empty. Then in a
-note:
+Add a rule with property `home_sidebars`, left `400`, and right empty. Then in a
+note's frontmatter just add the key — **no value is needed**:
 
 ```markdown
 ---
-nav-width: true
+home_sidebars:
 ---
 ```
 
-Opening that note widens the left sidebar to 400 px. Notes without the property
-keep whatever width they had.
+Opening that note widens the left sidebar to 400 px. The property matches purely
+by the **presence** of the key: `home_sidebars:` (empty), `home_sidebars: false`
+or any value all trigger the rule. Notes without the property keep whatever width
+they had.
 
 You can also match on tags, e.g. a rule with tag `#wide` applies to every note
 carrying that tag.
 
 ## Behavior when no rule matches
 
-By default the sidebar width is left unchanged when no rule matches. You can
-mark one rule as the **default** (the star button) and enable
-**"Reset to default when no rule matches"** to snap the sidebar back to that
-width on notes that don't match any rule.
+The **When no rule matches** setting controls what happens on notes that don't
+match any rule:
+
+- **Restore previous width** (default) — remembers the sidebar width from
+  *before* a rule was applied and puts it back when you leave a matched note.
+- **Reset to default width** — snaps back to the width of the rule you marked
+  with the star button. (The star *only* designates this fallback width — it has
+  no other effect.)
+- **Leave width unchanged** — the sidebar keeps whatever width it has.
 
 ## Installation
 
