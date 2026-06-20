@@ -5,7 +5,6 @@ import {
   TFile,
   App,
   getAllTags,
-  getLanguage,
   CachedMetadata,
 } from "obsidian";
 
@@ -73,7 +72,10 @@ const STRINGS: Record<Lang, Strings> = {
 };
 
 function getStrings(): Strings {
-  return getLanguage() === "de" ? STRINGS.de : STRINGS.en;
+  // Obsidian's getLanguage() would be cleaner but requires a newer minAppVersion
+  // than 1.4.0; read the stored UI language directly to keep broad compatibility.
+  const l = window.localStorage.getItem("language");
+  return l === "de" ? STRINGS.de : STRINGS.en;
 }
 
 interface Rule {

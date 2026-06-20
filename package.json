@@ -1,6 +1,6 @@
 {
   "name": "custom-sidebar-width",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Sets the left and right sidebar widths per note based on frontmatter properties or tags.",
   "main": "main.js",
   "scripts": {
