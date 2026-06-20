@@ -5,6 +5,7 @@ import {
   TFile,
   App,
   getAllTags,
+  getLanguage,
   CachedMetadata,
 } from "obsidian";
 
@@ -72,8 +73,7 @@ const STRINGS: Record<Lang, Strings> = {
 };
 
 function getStrings(): Strings {
-  const l = window.localStorage.getItem("language");
-  return l === "de" ? STRINGS.de : STRINGS.en;
+  return getLanguage() === "de" ? STRINGS.de : STRINGS.en;
 }
 
 interface Rule {
@@ -201,7 +201,7 @@ export default class CustomSidebarWidth extends Plugin {
       side === "left"
         ? ".workspace-split.mod-left-split"
         : ".workspace-split.mod-right-split";
-    const el = document.querySelector(selector) as HTMLElement | null;
+    const el = activeDocument.querySelector<HTMLElement>(selector);
     if (el) el.style.width = `${width}px`;
   }
 

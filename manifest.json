@@ -1,7 +1,7 @@
 {
   "id": "custom-sidebar-width",
   "name": "Custom Sidebar Width",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "minAppVersion": "1.4.0",
   "description": "Sets the left and right sidebar widths per note based on frontmatter properties or tags.",
   "author": "Avni Bilgin",
